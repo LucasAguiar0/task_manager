@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#0a0f1e" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Tasks</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon-192.png" />
+<style>
+:root{
+  --bg:#0a0f1e; --panel:#121a2f; --panel2:#18233c; --line:#26334f;
+  --text:#e9eef8; --dim:#8ea1c2; --faint:#57688a; --danger:#ff8b8b;
+  --single:#4cc9f0; --deadline:#ffb14e; --periodic:#b78dff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.4;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+svg{display:block}
+
+#screen{display:flex;flex-direction:column;height:100dvh;max-width:560px;margin:0 auto;position:relative;overflow:hidden}
+
+/* header */
+#hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:calc(14px + env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--line)}
+.h-title{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.h-sub{font-size:12px;color:var(--faint);margin-top:2px}
+.h-btn{font-size:12px;font-weight:600;color:var(--dim);padding:6px 11px;border:1px solid var(--line);border-radius:8px}
+.icon-btn{color:var(--faint);padding:7px;border-radius:8px}
+
+/* legend */
+#legend{display:flex;gap:14px;padding:9px 16px;border-bottom:1px solid var(--line)}
+.lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.dot{width:8px;height:8px;border-radius:50%}
+
+/* body */
+main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:14px 14px calc(96px + env(safe-area-inset-bottom))}
+
+/* month */
+.m-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.m-name{font-size:17px;font-weight:600;text-align:center}
+.m-year{font-size:11px;color:var(--faint);letter-spacing:.14em;text-align:center}
+.m-nav{color:var(--dim);padding:8px}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dow{text-align:center;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--faint);
+  text-transform:uppercase;padding-bottom:5px}
+.cell{display:flex;flex-direction:column;align-items:center;height:56px;padding-top:5px;
+  border-radius:9px;border:1px solid transparent}
+.cell.sel{background:var(--panel2);border-color:var(--line)}
+.cell.out{opacity:.3}
+.cell .num{display:flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border-radius:50%;font-size:13px;font-weight:500}
+.cell.today .num{background:var(--text);color:var(--bg);font-weight:700}
+.bars{display:flex;flex-direction:column;gap:2px;width:70%;margin-top:5px}
+.bar{height:3px;border-radius:3px}
+
+.rule{height:1px;background:var(--line);margin:18px 0 14px}
+.day-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.day-head b{font-size:14px}
+.day-head span{font-size:11px;color:var(--faint)}
+
+/* sections */
+.sec{margin-bottom:20px}
+.sec-head{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.sec-head .lbl{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.sec-head .ln{flex:1;height:1px;background:var(--line)}
+.sec-head .n{font-size:10.5px;color:var(--faint)}
+.group-lbl{font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--danger);margin-bottom:9px}
+
+/* rows */
+.rows{display:flex;flex-direction:column;gap:7px}
+.row{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
+  border-left-width:3px;border-radius:11px;padding:11px 13px}
+.row.done{opacity:.55}
+.row .mid{flex:1;min-width:0}
+.row .ttl{font-size:14.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.done .ttl{text-decoration:line-through}
+.row .meta{display:flex;align-items:center;gap:8px;margin-top:4px}
+.row .time{font-size:12px;color:var(--dim)}
+.tick{flex:0 0 auto;width:23px;height:23px;border-radius:50%;border:1.5px solid var(--line);
+  display:flex;align-items:center;justify-content:center}
+.pill{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  padding:2px 6px;border-radius:5px;white-space:nowrap}
+
+/* empty */
+.empty{text-align:center;padding:56px 24px;color:var(--faint)}
+.empty b{display:block;color:var(--dim);font-size:14px;margin-bottom:7px}
+.empty span{font-size:12.5px;line-height:1.55}
+.note{text-align:center;font-size:11px;color:var(--faint);padding:2px 0 10px}
+
+/* fab + nav */
+#fab{position:absolute;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));
+  width:54px;height:54px;border-radius:50%;background:var(--text);color:var(--bg);
+  display:flex;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.55);z-index:5}
+#fab:active{transform:scale(.94)}
+nav{display:flex;border-top:1px solid var(--line);background:var(--panel);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 0 13px;color:var(--faint)}
+nav button.on{color:var(--text)}
+nav button span{font-size:10px;font-weight:500}
+nav button.on span{font-weight:700}
+
+/* editor */
+#editor{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;flex-direction:column;
+  max-width:560px;margin:0 auto}
+#editor[hidden]{display:none}
+.e-head{display:flex;align-items:center;justify-content:space-between;
+  padding:calc(14px + env(safe-area-inset-top)) 16px 13px;border-bottom:1px solid var(--line)}
+.e-head .t{font-size:14.5px;font-weight:600}
+.e-save{border-radius:8px;padding:7px 15px;font-size:13.5px;font-weight:600;border:1px solid var(--line);color:var(--faint)}
+.e-save.ok{color:var(--bg)}
+.e-body{flex:1;min-height:0;overflow-y:auto;padding:16px 16px calc(32px + env(safe-area-inset-bottom))}
+.types{display:flex;gap:7px;margin-bottom:20px}
+.types button{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;
+  border-radius:11px;background:var(--panel);border:1px solid var(--line);color:var(--dim);font-size:11.5px;font-weight:600}
+.field{margin-bottom:17px}
+label{display:block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:7px}
+input,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+  padding:11px 12px;color:var(--text);font:inherit;font-size:16px;outline:none;color-scheme:dark}
+input:focus,textarea:focus{border-color:var(--dim)}
+textarea{resize:none}
+.hint{font-size:12px;color:var(--faint);margin:7px 0 0}
+.hint.bad{color:var(--danger)}
+.days{display:flex;gap:5px}
+.days button{flex:1;padding:11px 0;border-radius:8px;background:var(--panel);border:1px solid var(--line);
+  color:var(--dim);font-size:13.5px;font-weight:600}
+.del{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px 0;
+  border-radius:9px;border:1px solid rgba(255,107,107,.28);color:var(--danger);font-size:13.5px;font-weight:600;margin-top:6px}
+</style>
+</head>
+<body>
+
+<div id="screen">
+  <header id="hdr"></header>
+  <div id="legend"></div>
+  <main id="body"></main>
+  <button id="fab" aria-label="Add task"></button>
+  <nav id="nav"></nav>
+</div>
+<div id="editor" hidden></div>
+
+<script>
+/* ========================= icons ========================= */
+const P = {
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  list:'<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>',
+  archive:'<path d="M3 8h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M10 12h4"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  check:'<path d="M4 12.5 9 17.5 20 6.5"/>',
+  left:'<path d="M15 5 8 12l7 7"/>',
+  right:'<path d="m9 5 7 7-7 7"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  trash:'<path d="M4 7h16M10 7V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>',
+  circle:'<circle cx="12" cy="12" r="8"/>',
+  flag:'<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
+  repeat:'<path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4"/>',
+  reset:'<path d="M4 12a8 8 0 1 0 2.3-5.6L4 9M4 4v5h5"/>',
+};
+const ico = (n, s = 20, w = 1.9) =>
+  `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+
+/* ========================= constants ========================= */
+const CAT = {
+  single:   { label:'Task',      color:'var(--single)',   icon:'circle' },
+  deadline: { label:'Deadline',  color:'var(--deadline)', icon:'flag'   },
+  periodic: { label:'Repeating', color:'var(--periodic)', icon:'repeat' },
+};
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['January','February','March','April','May','June','July',
+  'August','September','October','November','December'];
+const HORIZON = 60, PAST = 120;
+
+/* ========================= dates ========================= */
+const pad = n => String(n).padStart(2,'0');
+const key = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseKey = s => { const [y,m,d] = s.split('-').map(Number); return new Date(Date.UTC(y,m-1,d)); };
+const dayDiff = (a,b) => Math.round((parseKey(b)-parseKey(a))/864e5);
+const addDays = (s,n) => { const d = parseKey(s); d.setUTCDate(d.getUTCDate()+n);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`; };
+const todayKey = () => key(new Date());
+const weekdayOf = s => parseKey(s).getUTCDay();
+
+function prettyDate(s){
+  const t = todayKey();
+  if (s === t) return 'Today';
+  if (s === addDays(t,1)) return 'Tomorrow';
+  if (s === addDays(t,-1)) return 'Yesterday';
+  const d = parseKey(s);
+  const yr = d.getUTCFullYear() !== new Date().getFullYear() ? ` ${d.getUTCFullYear()}` : '';
+  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()].slice(0,3)}${yr}`;
+}
+function prettyTime(t){
+  if (!t) return 'All day';
+  const [h,m] = t.split(':').map(Number);
+  return `${h%12===0?12:h%12}:${pad(m)} ${h<12?'AM':'PM'}`;
+}
+
+/* ========================= occurrences ========================= */
+/* single   -> one day
+   deadline -> a reminder on every day from startDate up to the due day
+   periodic -> every N days from startDate, indefinitely                */
+function occurrencesOn(dayKey){
+  const out = [];
+  for (const t of tasks){
+    if (t.type === 'single'){
+      if (t.date === dayKey) out.push({ task:t, kind:'single', done:!!t.done, dayKey });
+    } else if (t.type === 'deadline'){
+      if (t.date === dayKey){
+        out.push({ task:t, kind:'due', done:!!t.done, dayKey });
+      } else if (t.startDate && t.startDate <= dayKey && dayKey < t.date){
+        const span = Math.max(1, dayDiff(t.startDate, t.date));
+        const left = dayDiff(dayKey, t.date);
+        out.push({ task:t, kind:'lead', daysLeft:left, done:!!t.done, dayKey,
+                   heat: Math.min(1, Math.max(.2, 1 - left/span)) });
+      }
+    } else if (t.type === 'periodic'){
+      if (dayKey >= t.startDate && dayDiff(t.startDate, dayKey) % t.intervalDays === 0)
+        out.push({ task:t, kind:'periodic', done:!!(t.doneDates||{})[dayKey], dayKey });
+    }
+  }
+  return out.sort((a,b) => {
+    const A = a.task.time || '', B = b.task.time || '';
+    if (A === B) return a.task.title.localeCompare(b.task.title);
+    if (!A) return -1; if (!B) return 1;
+    return A < B ? -1 : 1;
+  });
+}
+const colorOf = o => CAT[o.task.type].color;
+function badgeOf(o){
+  if (o.kind === 'lead') return `${o.daysLeft} day${o.daysLeft===1?'':'s'} left`;
+  if (o.kind === 'due')  return 'Due';
+  if (o.kind === 'periodic'){
+    const n = o.task.intervalDays;
+    return n === 7 ? `Every ${DOW[weekdayOf(o.task.startDate)]}`
+         : n === 1 ? 'Every day' : `Every ${n} days`;
+  }
+  return '';
+}
+
+/* ========================= state ========================= */
+const STORE = 'taskcal.v1';
+let tasks = [];
+let view = 'calendar';
+let selected = todayKey();
+let cursor = new Date();
+let editing = null;
+let resetArmed = false;
+
+function load(){
+  try { const raw = localStorage.getItem(STORE); if (raw) return JSON.parse(raw); } catch(e){}
+  return null;
+}
+function persist(){
+  try { localStorage.setItem(STORE, JSON.stringify(tasks)); } catch(e){}
+  scheduleNotifications();
+}
+
+/* ========================= views ========================= */
+function taskRow(o){
+  const c = colorOf(o), b = badgeOf(o);
+  return `<div class="row${o.done?' done':''}" style="border-left-color:${c}"
+            data-open="${o.task.id}" data-day="${o.dayKey}">
+    <button class="tick" data-toggle="${o.task.id}" data-day="${o.dayKey}"
+      style="border-color:${o.done?c:'var(--line)'};background:${o.done?c:'transparent'}"
+      aria-label="${o.done?'Mark as not done':'Mark as done'}">
+      ${o.done ? `<span style="color:var(--bg)">${ico('check',14,3)}</span>` : ''}
+    </button>
+    <div class="mid">
+      <div class="ttl">${esc(o.task.title)}</div>
+      <div class="meta">
+        <span class="time">${prettyTime(o.task.time)}</span>
+        ${b ? `<span class="pill" style="color:${c};background:color-mix(in srgb,${c} 12%,transparent);
+                border:1px solid color-mix(in srgb,${c} 30%,transparent)">${b}</span>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const rowsOf = list => `<div class="rows">${list.map(taskRow).join('')}</div>`;
+const section = (k, occs) => `<div class="sec">
+    <div class="sec-head"><span class="lbl">${prettyDate(k)}</span><span class="ln"></span><span class="n">${occs.length}</span></div>
+    ${rowsOf(occs)}
+  </div>`;
+const empty = (t,b) => `<div class="empty"><b>${t}</b><span>${b}</span></div>`;
+
+function monthView(){
+  const y = cursor.getFullYear(), m = cursor.getMonth(), t = todayKey();
+  const offset = new Date(y,m,1).getDay();
+  let cells = '';
+  for (let i = 0; i < 42; i++){
+    const d = new Date(y, m, 1 - offset + i), k = key(d);
+    const occs = occurrencesOn(k);
+    const bars = occs.slice(0,3).map(o =>
+      `<span class="bar" style="background:${colorOf(o)};opacity:${o.done?.3:(o.kind==='lead'?o.heat:1)}"></span>`).join('');
+    cells += `<button class="cell${d.getMonth()===m?'':' out'}${k===selected?' sel':''}${k===t?' today':''}"
+      data-day-pick="${k}"><span class="num">${d.getDate()}</span><span class="bars">${bars}</span></button>`;
+  }
+  const occs = occurrencesOn(selected);
+  return `
+    <div class="m-head">
+      <button class="m-nav" data-month="-1" aria-label="Previous month">${ico('left')}</button>
+      <div><div class="m-name">${MONTHS[m]}</div><div class="m-year">${y}</div></div>
+      <button class="m-nav" data-month="1" aria-label="Next month">${ico('right')}</button>
+    </div>
+    <div class="grid">${DOW.map(d=>`<div class="dow">${d[0]}</div>`).join('')}</div>
+    <div class="grid">${cells}</div>
+    <div class="rule"></div>
+    <div class="day-head"><b>${prettyDate(selected)}</b>
+      <span>${occs.length} ${occs.length===1?'item':'items'}</span></div>
+    ${occs.length ? rowsOf(occs) : empty('Clear day','Tap + to put something on it.')}`;
+}
+
+function listView(){
+  const t = todayKey();
+  let over = '', up = '', count = 0;
+  for (let i = PAST; i >= 1; i--){
+    const k = addDays(t,-i);
+    const o = occurrencesOn(k).filter(x => !x.done && x.kind !== 'lead');
+    if (o.length){ over += section(k,o); count++; }
+  }
+  for (let i = 0; i < HORIZON; i++){
+    const k = addDays(t,i);
+    const o = occurrencesOn(k).filter(x => !x.done);
+    if (o.length){ up += section(k,o); count++; }
+  }
+  if (!count) return empty('Nothing scheduled',
+    "Add a task, a deadline, or something that repeats. It'll show up here and on the calendar.");
+  return (over ? `<div class="group-lbl">Overdue</div>${over}` : '') + up +
+         (up ? `<p class="note">Showing the next ${HORIZON} days</p>` : '');
+}
+
+function doneView(){
+  const t = todayKey();
+  let html = '';
+  for (let i = 0; i <= PAST; i++){
+    const k = addDays(t,-i);
+    const o = occurrencesOn(k).filter(x => x.done && x.kind !== 'lead');
+    if (o.length) html += section(k,o);
+  }
+  return html || empty('No history yet',
+    "Tick something off and it'll be kept here, along with the day you finished it.");
+}
+
+/* ========================= render ========================= */
+function render(){
+  const t = todayKey();
+  const left = occurrencesOn(t).filter(o => !o.done).length;
+  const titles = { calendar:'Calendar', list:'Tasks', done:'Completed' };
+
+  document.getElementById('hdr').innerHTML = `
+    <div><div class="h-title">${titles[view]}</div>
+      <div class="h-sub">${left === 0 ? 'Nothing left today' : `${left} left today`}</div></div>
+    <div style="display:flex;align-items:center;gap:7px">
+      ${view === 'calendar' ? `<button class="h-btn" data-today="1">Today</button>` : ''}
+      <button class="icon-btn" data-reset="1" aria-label="Clear all tasks"
+        style="${resetArmed?'color:var(--danger);border:1px solid rgba(255,107,107,.35);font-size:12px;font-weight:600;padding:6px 10px':''}">
+        ${resetArmed ? 'Clear all?' : ico('reset',17)}</button>
+    </div>`;
+
+  document.getElementById('legend').innerHTML = Object.values(CAT).map(c =>
+    `<span class="lg"><span class="dot" style="background:${c.color}"></span>${c.label}</span>`).join('');
+
+  const main = document.getElementById('body');
+  const keepScroll = main.scrollTop;
+  main.innerHTML = view === 'calendar' ? monthView() : view === 'list' ? listView() : doneView();
+  main.scrollTop = keepScroll;
+
+  document.getElementById('fab').innerHTML = ico('plus',26,2.5);
+  document.getElementById('nav').innerHTML = [
+    ['calendar','Calendar','calendar'], ['list','Tasks','list'], ['done','Done','archive']
+  ].map(([k,label,icon]) =>
+    `<button class="${view===k?'on':''}" data-view="${k}">${ico(icon,19,view===k?2.3:1.8)}<span>${label}</span></button>`
+  ).join('');
+}
+
+/* ========================= actions ========================= */
+function toggle(id, dayKey){
+  tasks = tasks.map(t => {
+    if (t.id !== id) return t;
+    if (t.type === 'periodic'){
+      const dd = { ...(t.doneDates||{}) };
+      if (dd[dayKey]) delete dd[dayKey]; else dd[dayKey] = true;
+      return { ...t, doneDates: dd };
+    }
+    return { ...t, done: !t.done };
+  });
+  persist(); render();
+}
+
+document.addEventListener('click', e => {
+  const el = t => e.target.closest(`[${t}]`);
+  let n;
+  if ((n = el('data-view'))){ view = n.dataset.view; resetArmed = false; render(); }
+  else if ((n = el('data-month'))){ cursor = new Date(cursor.getFullYear(), cursor.getMonth() + (+n.dataset.month), 1); render(); }
+  else if ((n = el('data-day-pick'))){ selected = n.dataset.dayPick; render(); }
+  else if ((n = el('data-today'))){ cursor = new Date(); selected = todayKey(); render(); }
+  else if ((n = el('data-toggle'))){ toggle(n.dataset.toggle, n.dataset.day); }
+  else if ((n = el('data-open'))){ openEditor(tasks.find(t => t.id === n.dataset.open)); }
+  else if ((n = el('data-reset'))){
+    if (resetArmed){ tasks = []; resetArmed = false; persist(); }
+    else { resetArmed = true; setTimeout(() => { resetArmed = false; render(); }, 3000); }
+    render();
+  }
+});
+document.getElementById('fab').addEventListener('click', () => openEditor(null));
+
+/* ========================= editor ========================= */
+const blank = () => ({ id:null, type:'single', title:'', date:selected, startDate:selected,
+                       time:'', intervalDays:7, notes:'', done:false, doneDates:{} });
+
+function openEditor(task){
+  editing = task ? JSON.parse(JSON.stringify(task)) : blank();
+  drawEditor(!task);
+  document.getElementById('editor').hidden = false;
+}
+function closeEditor(){
+  editing = null;
+  document.getElementById('editor').hidden = true;
+  render();
+}
+const isValid = () => editing.title.trim() &&
+  !(editing.type === 'deadline' && editing.startDate > editing.date);
+
+function drawEditor(focusTitle){
+  const f = editing, c = CAT[f.type].color, existing = !!f.id;
+  const types = Object.entries(CAT).map(([k,v]) => {
+    const on = f.type === k;
+    return `<button data-type="${k}" style="${on?`background:color-mix(in srgb,${v.color} 11%,transparent);
+      border-color:${v.color};color:${v.color}`:''}">${ico(v.icon,17)}<span>${v.label}</span></button>`;
+  }).join('');
+
+  let specific = '';
+  if (f.type === 'single'){
+    specific = field('Day', `<input type="date" data-f="date" value="${f.date}">`);
+  } else if (f.type === 'deadline'){
+    const h = hintText();
+    specific =
+      field('Due date', `<input type="date" data-f="date" value="${f.date}">`) +
+      field('Start reminders on', `<input type="date" data-f="startDate" value="${f.startDate}">
+        <p class="hint${h.bad?' bad':''}" id="hint">${h.text}</p>`);
+  } else {
+    const n = f.intervalDays;
+    const days = [1,2,3,4,5,6,7].map(d => `<button data-int="${d}" style="${d===n
+      ? `background:color-mix(in srgb,${c} 13%,transparent);border-color:${c};color:${c}` : ''}">${d}</button>`).join('');
+    specific =
+      field('First occurrence', `<input type="date" data-f="startDate" value="${f.startDate}">`) +
+      field('Repeat every', `<div class="days">${days}</div>
+        <p class="hint" id="hint">${hintText().text}</p>`);
+  }
+
+  document.getElementById('editor').innerHTML = `
+    <div class="e-head">
+      <button data-close="1" class="icon-btn" style="color:var(--dim)" aria-label="Close">${ico('x')}</button>
+      <div class="t">${existing ? 'Edit task' : 'New task'}</div>
+      <button class="e-save${isValid()?' ok':''}" data-save="1"
+        style="${isValid()?`background:${c};border-color:${c}`:''}">Save</button>
+    </div>
+    <div class="e-body">
+      <div class="types">${types}</div>
+      ${field('What needs doing', `<input data-f="title" value="${esc(f.title)}" placeholder="Name the task" autocomplete="off">`)}
+      ${specific}
+      ${field('Time (optional)', `<input type="time" data-f="time" value="${f.time}">`)}
+      ${field('Notes', `<textarea data-f="notes" rows="3" placeholder="Anything worth remembering">${esc(f.notes)}</textarea>`)}
+      ${existing ? `<button class="del" data-del="1">${ico('trash',16)} Delete task</button>` : ''}
+    </div>`;
+
+  if (focusTitle) document.querySelector('[data-f="title"]').focus();
+}
+const field = (label, inner) => `<div class="field"><label>${label}</label>${inner}</div>`;
+
+document.getElementById('editor').addEventListener('input', e => {
+  if (!editing) return;
+  const f = e.target.dataset.f; if (!f) return;
+  editing[f] = e.target.value;
+  if (f === 'date' || f === 'startDate') updateHint();
+  refreshSave();
+});
+document.getElementById('editor').addEventListener('click', e => {
+  const el = t => e.target.closest(`[${t}]`);
+  let n;
+  if ((n = el('data-type'))){ editing.type = n.dataset.type; drawEditor(); }
+  else if ((n = el('data-int'))){ editing.intervalDays = +n.dataset.int; drawEditor(); }
+  else if (el('data-close')) closeEditor();
+  else if (el('data-del')) { tasks = tasks.filter(t => t.id !== editing.id); persist(); closeEditor(); }
+  else if (el('data-save')) saveTask();
+});
+function refreshSave(){
+  const b = document.querySelector('[data-save]');
+  if (!b) return;
+  const ok = isValid(), c = CAT[editing.type].color;
+  b.className = 'e-save' + (ok ? ' ok' : '');
+  b.style.cssText = ok ? `background:${c};border-color:${c}` : '';
+}
+function hintText(){
+  const f = editing;
+  if (f.type === 'deadline'){
+    return f.startDate > f.date
+      ? { bad:true,  text:'Reminders have to start on or before the due date.' }
+      : { bad:false, text:`Appears every day from ${prettyDate(f.startDate)} until it's due, counting down.` };
+  }
+  const n = f.intervalDays;
+  return { bad:false, text:
+    n === 1 ? `Every day, starting ${prettyDate(f.startDate)}.`
+  : n === 7 ? `Every ${DOW[weekdayOf(f.startDate)]}, starting ${prettyDate(f.startDate)}.`
+  : `Every ${n} days, starting ${prettyDate(f.startDate)}.` };
+}
+function updateHint(){
+  const el = document.getElementById('hint');
+  if (!el || editing.type === 'single') return;
+  const h = hintText();
+  el.textContent = h.text;
+  el.className = 'hint' + (h.bad ? ' bad' : '');
+}
+function saveTask(){
+  if (!isValid()) return;
+  const f = { ...editing, title: editing.title.trim(), id: editing.id || 't' + Date.now() };
+  if (f.type === 'single')   f.startDate = f.date;
+  if (f.type === 'periodic') f.date = f.startDate;
+  tasks = tasks.some(t => t.id === f.id) ? tasks.map(t => t.id === f.id ? f : t) : [...tasks, f];
+  persist(); closeEditor();
+}
+
+/* ========================= notifications (APK build only) ========================= */
+async function scheduleNotifications(){
+  const LN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+  if (!LN) return;
+  try {
+    const perm = await LN.checkPermissions();
+    if (perm.display !== 'granted'){
+      const req = await LN.requestPermissions();
+      if (req.display !== 'granted') return;
+    }
+    const pending = await LN.getPending();
+    if (pending.notifications.length) await LN.cancel({ notifications: pending.notifications });
+
+    const now = Date.now(), out = [];
+    for (let i = 0; i < 30 && out.length < 60; i++){
+      const k = addDays(todayKey(), i);
+      for (const o of occurrencesOn(k)){
+        if (o.done || !o.task.time) continue;
+        const [h, m] = o.task.time.split(':').map(Number);
+        const [Y, M, D] = k.split('-').map(Number);
+        const at = new Date(Y, M-1, D, h, m, 0);
+        if (at.getTime() <= now) continue;
+        out.push({
+          id: (out.length + 1),
+          title: o.kind === 'lead' ? `${badgeOf(o)} — ${o.task.title}` : o.task.title,
+          body: o.task.notes || (o.kind === 'due' ? 'Due today' : ''),
+          schedule: { at },
+        });
+      }
+    }
+    if (out.length) await LN.schedule({ notifications: out });
+  } catch(e){}
+}
+
+/* ========================= boot ========================= */
+tasks = load() || [];
+render();
+scheduleNotifications();
+
+/* keep "today" honest if the app stays open past midnight */
+let lastDay = todayKey();
+setInterval(() => { const k = todayKey(); if (k !== lastDay){ lastDay = k; render(); } }, 60000);
+
+if ('serviceWorker' in navigator)
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>

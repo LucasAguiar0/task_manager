@@ -1,0 +1,14 @@
+{
+  "appId": "com.yourname.tasks",
+  "appName": "Tasks",
+  "webDir": ".",
+  "android": {
+    "backgroundColor": "#0a0f1e"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#4CC9F0"
+    }
+  }
+}

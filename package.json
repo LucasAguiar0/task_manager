@@ -1,0 +1,20 @@
+{
+  "name": "tasks-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Task list and calendar, sharing one set of tasks.",
+  "scripts": {
+    "serve": "npx --yes serve .",
+    "android:add": "npx cap add android",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/local-notifications": "^6.0.0"
+  }
+}
