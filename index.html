@@ -37,7 +37,11 @@ svg{display:block}
 
 /* legend */
 #legend{display:flex;gap:14px;padding:9px 16px;border-bottom:1px solid var(--line)}
-.lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);
+  padding:4px 8px;border-radius:20px;border:1px solid transparent;transition:opacity .12s}
+.lg:active{opacity:.6}
+.lg.off{color:var(--faint);text-decoration:line-through;text-decoration-thickness:1px}
+.muted{color:var(--faint)}
 .dot{width:8px;height:8px;border-radius:50%}
 
 /* body */
@@ -250,7 +254,10 @@ function badgeOf(o){
 
 /* ========================= state ========================= */
 const STORE = 'taskcal.v1';
+const FILTERS_STORE = 'taskcal.filters.v1';
+const ALL_SHOWN = { single:true, deadline:true, periodic:true };
 let tasks = [];
+let filters = { ...ALL_SHOWN };
 let view = 'calendar';
 let selected = todayKey();
 let cursor = new Date();
@@ -265,6 +272,24 @@ function persist(){
   try { localStorage.setItem(STORE, JSON.stringify(tasks)); } catch(e){}
   scheduleNotifications();
 }
+function loadFilters(){
+  try {
+    const raw = localStorage.getItem(FILTERS_STORE);
+    if (raw) return { ...ALL_SHOWN, ...JSON.parse(raw) };
+  } catch(e){}
+  return { ...ALL_SHOWN };
+}
+function persistFilters(){
+  try { localStorage.setItem(FILTERS_STORE, JSON.stringify(filters)); } catch(e){}
+}
+
+/* What the views show. Filters hide categories from sight only — anything hidden is
+   still stored, still counted as scheduled, and still notifies. */
+const visibleOn = k => occurrencesOn(k).filter(o => filters[o.task.type]);
+const hiddenOn  = k => occurrencesOn(k).length - visibleOn(k).length;
+const anyHidden = () => Object.values(filters).some(v => !v);
+const hiddenNames = () => Object.keys(CAT).filter(k => !filters[k])
+  .map(k => CAT[k].label.toLowerCase()).join(' and ');
 
 /* ========================= views ========================= */
 function taskRow(o){
@@ -300,13 +325,14 @@ function monthView(){
   let cells = '';
   for (let i = 0; i < 42; i++){
     const d = new Date(y, m, 1 - offset + i), k = key(d);
-    const occs = occurrencesOn(k);
+    const occs = visibleOn(k);
     const bars = occs.slice(0,3).map(o =>
       `<span class="bar" style="background:${colorOf(o)};opacity:${o.done?.3:(o.kind==='lead'?o.heat:1)}"></span>`).join('');
     cells += `<button class="cell${d.getMonth()===m?'':' out'}${k===selected?' sel':''}${k===t?' today':''}"
       data-day-pick="${k}"><span class="num">${d.getDate()}</span><span class="bars">${bars}</span></button>`;
   }
-  const occs = occurrencesOn(selected);
+  const occs = visibleOn(selected);
+  const tucked = hiddenOn(selected);
   return `
     <div class="m-head">
       <button class="m-nav" data-month="-1" aria-label="Previous month">${ico('left')}</button>
@@ -318,7 +344,9 @@ function monthView(){
     <div class="rule"></div>
     <div class="day-head"><b>${prettyDate(selected)}</b>
       <span>${occs.length} ${occs.length===1?'item':'items'}</span></div>
-    ${occs.length ? rowsOf(occs) : empty('Clear day','Tap + to put something on it.')}`;
+    ${occs.length ? rowsOf(occs)
+      : tucked ? empty('Nothing showing', `${tucked} ${tucked===1?'task is':'tasks are'} hidden by the filter. Tap ${hiddenNames()} above to bring ${tucked===1?'it':'them'} back.`)
+      : empty('Clear day','Tap + to put something on it.')}`;
 }
 
 function listView(){
@@ -326,16 +354,18 @@ function listView(){
   let over = '', up = '', count = 0;
   for (let i = PAST; i >= 1; i--){
     const k = addDays(t,-i);
-    const o = occurrencesOn(k).filter(x => !x.done && x.kind !== 'lead');
+    const o = visibleOn(k).filter(x => !x.done && x.kind !== 'lead');
     if (o.length){ over += section(k,o); count++; }
   }
   for (let i = 0; i < HORIZON; i++){
     const k = addDays(t,i);
-    const o = occurrencesOn(k).filter(x => !x.done);
+    const o = visibleOn(k).filter(x => !x.done);
     if (o.length){ up += section(k,o); count++; }
   }
-  if (!count) return empty('Nothing scheduled',
-    "Add a task, a deadline, or something that repeats. It'll show up here and on the calendar.");
+  if (!count) return anyHidden()
+    ? empty('Nothing showing', `Everything coming up is ${hiddenNames()}, which you've hidden. Tap it in the row above to bring it back.`)
+    : empty('Nothing scheduled',
+        "Add a task, a deadline, or something that repeats. It'll show up here and on the calendar.");
   return (over ? `<div class="group-lbl">Overdue</div>${over}` : '') + up +
          (up ? `<p class="note">Showing the next ${HORIZON} days</p>` : '');
 }
@@ -345,22 +375,26 @@ function doneView(){
   let html = '';
   for (let i = 0; i <= PAST; i++){
     const k = addDays(t,-i);
-    const o = occurrencesOn(k).filter(x => x.done && x.kind !== 'lead');
+    const o = visibleOn(k).filter(x => x.done && x.kind !== 'lead');
     if (o.length) html += section(k,o);
   }
-  return html || empty('No history yet',
-    "Tick something off and it'll be kept here, along with the day you finished it.");
+  return html || (anyHidden()
+    ? empty('Nothing showing', `Anything you've finished is ${hiddenNames()}, which is hidden right now.`)
+    : empty('No history yet',
+        "Tick something off and it'll be kept here, along with the day you finished it."));
 }
 
 /* ========================= render ========================= */
 function render(){
   const t = todayKey();
-  const left = occurrencesOn(t).filter(o => !o.done).length;
+  const left = visibleOn(t).filter(o => !o.done).length;
+  const tuckedToday = hiddenOn(t);
   const titles = { calendar:'Calendar', list:'Tasks', done:'Completed' };
 
   document.getElementById('hdr').innerHTML = `
     <div><div class="h-title">${titles[view]}</div>
-      <div class="h-sub">${left === 0 ? 'Nothing left today' : `${left} left today`}</div></div>
+      <div class="h-sub">${left === 0 ? 'Nothing left today' : `${left} left today`}${
+        anyHidden() ? `<span class="muted"> · ${hiddenNames()} hidden</span>` : ''}</div></div>
     <div style="display:flex;align-items:center;gap:7px">
       ${view === 'calendar' ? `<button class="h-btn" data-today="1">Today</button>` : ''}
       <button class="icon-btn" data-reset="1" aria-label="Clear all tasks"
@@ -368,8 +402,12 @@ function render(){
         ${resetArmed ? 'Clear all?' : ico('reset',17)}</button>
     </div>`;
 
-  document.getElementById('legend').innerHTML = Object.values(CAT).map(c =>
-    `<span class="lg"><span class="dot" style="background:${c.color}"></span>${c.label}</span>`).join('');
+  document.getElementById('legend').innerHTML = Object.entries(CAT).map(([k,c]) => {
+    const on = filters[k];
+    return `<button class="lg${on?'':' off'}" data-filter="${k}"
+      aria-pressed="${on}" title="${on?`Hide ${c.label.toLowerCase()} tasks`:`Show ${c.label.toLowerCase()} tasks`}">
+      <span class="dot" style="${on?`background:${c.color}`:`box-shadow:inset 0 0 0 1.5px ${c.color}`}"></span>${c.label}</button>`;
+  }).join('');
 
   const main = document.getElementById('body');
   const keepScroll = main.scrollTop;
@@ -407,6 +445,11 @@ document.addEventListener('click', e => {
   else if ((n = el('data-today'))){ cursor = new Date(); selected = todayKey(); render(); }
   else if ((n = el('data-toggle'))){ toggle(n.dataset.toggle, n.dataset.day); }
   else if ((n = el('data-open'))){ openEditor(tasks.find(t => t.id === n.dataset.open)); }
+  else if ((n = el('data-filter'))){
+    const k = n.dataset.filter;
+    filters[k] = !filters[k];
+    persistFilters(); render();
+  }
   else if ((n = el('data-reset'))){
     if (resetArmed){ tasks = []; resetArmed = false; persist(); }
     else { resetArmed = true; setTimeout(() => { resetArmed = false; render(); }, 3000); }
@@ -567,6 +610,7 @@ async function scheduleNotifications(){
 
 /* ========================= boot ========================= */
 tasks = load() || [];
+filters = loadFilters();
 render();
 scheduleNotifications();
 
@@ -574,7 +618,8 @@ scheduleNotifications();
 let lastDay = todayKey();
 setInterval(() => { const k = todayKey(); if (k !== lastDay){ lastDay = k; render(); } }, 60000);
 
-if ('serviceWorker' in navigator)
+/* offline cache is for the installed-web-app route; the APK already has the files locally */
+if ('serviceWorker' in navigator && !window.Capacitor)
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
