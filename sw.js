@@ -1,6 +1,6 @@
 /* Caches the app so it opens instantly and works with no connection.
    Bump CACHE when you change any file. */
-const CACHE = 'tasks-v3';
+const CACHE = 'tasks-v4';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png'

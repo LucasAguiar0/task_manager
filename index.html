@@ -184,6 +184,7 @@ const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['January','February','March','April','May','June','July',
   'August','September','October','November','December'];
 const HORIZON = 60, PAST = 120, DONE_AHEAD = 400;
+const BUILD = 4;
 
 /* ========================= dates ========================= */
 const pad = n => String(n).padStart(2,'0');
@@ -255,7 +256,12 @@ function completedMs(o){
 }
 function completedDay(o){
   const v = completedStamp(o);
-  if (!v) return o.dayKey;
+  if (!v){
+    /* Ticked before the app recorded timestamps. Best guess is the scheduled day, but
+       never a day in the future — it plainly got finished on or before today. */
+    const t = todayKey();
+    return o.dayKey > t ? t : o.dayKey;
+  }
   const d = new Date(v);
   return isNaN(d.getTime()) ? o.dayKey : key(d);
 }
@@ -408,11 +414,12 @@ function doneView(){
   if (!days.length) return anyHidden()
     ? empty('Nothing showing', `Anything you've finished is ${hiddenNames()}, which is hidden right now.`)
     : empty('No history yet',
-        "Tick something off and it'll be kept here, along with the day you finished it.");
+        "Tick something off and it'll be kept here, along with the day you finished it.")
+        + `<p class="note">build ${BUILD}</p>`;
   return days.map(day => {
     const list = buckets[day].sort((a,b) => completedMs(b) - completedMs(a));
     return section(day, list, { day, prefix: 'Finished ' });
-  }).join('');
+  }).join('') + `<p class="note">build ${BUILD}</p>`;
 }
 
 /* ========================= render ========================= */
