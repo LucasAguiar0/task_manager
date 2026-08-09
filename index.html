@@ -183,7 +183,7 @@ const CAT = {
 const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['January','February','March','April','May','June','July',
   'August','September','October','November','December'];
-const HORIZON = 60, PAST = 120;
+const HORIZON = 60, PAST = 120, DONE_AHEAD = 400;
 
 /* ========================= dates ========================= */
 const pad = n => String(n).padStart(2,'0');
@@ -241,6 +241,24 @@ function occurrencesOn(dayKey){
   });
 }
 const colorOf = o => CAT[o.task.type].color;
+
+/* When something was ticked off. Older entries were stored as `true` with no timestamp,
+   so those fall back to the day the task was scheduled for. */
+function completedStamp(o){
+  const v = o.task.type === 'periodic' ? (o.task.doneDates||{})[o.dayKey] : o.task.completedAt;
+  return typeof v === 'string' ? v : null;
+}
+function completedMs(o){
+  const v = completedStamp(o);
+  const ms = v ? Date.parse(v) : NaN;
+  return isNaN(ms) ? parseKey(o.dayKey).getTime() : ms;
+}
+function completedDay(o){
+  const v = completedStamp(o);
+  if (!v) return o.dayKey;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? o.dayKey : key(d);
+}
 function badgeOf(o){
   if (o.kind === 'lead') return `${o.daysLeft} day${o.daysLeft===1?'':'s'} left`;
   if (o.kind === 'due')  return 'Due';
@@ -292,8 +310,10 @@ const hiddenNames = () => Object.keys(CAT).filter(k => !filters[k])
   .map(k => CAT[k].label.toLowerCase()).join(' and ');
 
 /* ========================= views ========================= */
-function taskRow(o){
+function taskRow(o, opts){
   const c = colorOf(o), b = badgeOf(o);
+  const scheduled = opts && opts.day && o.dayKey !== opts.day
+    ? `<span class="time">${o.kind === 'due' ? 'was due' : 'for'} ${prettyDate(o.dayKey)}</span>` : '';
   return `<div class="row${o.done?' done':''}" style="border-left-color:${c}"
             data-open="${o.task.id}" data-day="${o.dayKey}">
     <button class="tick" data-toggle="${o.task.id}" data-day="${o.dayKey}"
@@ -305,6 +325,7 @@ function taskRow(o){
       <div class="ttl">${esc(o.task.title)}</div>
       <div class="meta">
         <span class="time">${prettyTime(o.task.time)}</span>
+        ${scheduled}
         ${b ? `<span class="pill" style="color:${c};background:color-mix(in srgb,${c} 12%,transparent);
                 border:1px solid color-mix(in srgb,${c} 30%,transparent)">${b}</span>` : ''}
       </div>
@@ -312,10 +333,11 @@ function taskRow(o){
   </div>`;
 }
 const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-const rowsOf = list => `<div class="rows">${list.map(taskRow).join('')}</div>`;
-const section = (k, occs) => `<div class="sec">
-    <div class="sec-head"><span class="lbl">${prettyDate(k)}</span><span class="ln"></span><span class="n">${occs.length}</span></div>
-    ${rowsOf(occs)}
+const rowsOf = (list, opts) => `<div class="rows">${list.map(o => taskRow(o, opts)).join('')}</div>`;
+const section = (k, occs, opts) => `<div class="sec">
+    <div class="sec-head"><span class="lbl">${opts && opts.prefix || ''}${prettyDate(k)}</span>
+      <span class="ln"></span><span class="n">${occs.length}</span></div>
+    ${rowsOf(occs, opts)}
   </div>`;
 const empty = (t,b) => `<div class="empty"><b>${t}</b><span>${b}</span></div>`;
 
@@ -372,16 +394,25 @@ function listView(){
 
 function doneView(){
   const t = todayKey();
-  let html = '';
-  for (let i = 0; i <= PAST; i++){
-    const k = addDays(t,-i);
-    const o = visibleOn(k).filter(x => x.done && x.kind !== 'lead');
-    if (o.length) html += section(k,o);
+  const buckets = {};
+  /* Search forwards as well as back: a deadline finished early sits on a future day. */
+  for (let i = -PAST; i <= DONE_AHEAD; i++){
+    const k = addDays(t, i);
+    for (const o of visibleOn(k)){
+      if (!o.done || o.kind === 'lead') continue;
+      const day = completedDay(o);
+      (buckets[day] = buckets[day] || []).push(o);
+    }
   }
-  return html || (anyHidden()
+  const days = Object.keys(buckets).sort().reverse();
+  if (!days.length) return anyHidden()
     ? empty('Nothing showing', `Anything you've finished is ${hiddenNames()}, which is hidden right now.`)
     : empty('No history yet',
-        "Tick something off and it'll be kept here, along with the day you finished it."));
+        "Tick something off and it'll be kept here, along with the day you finished it.");
+  return days.map(day => {
+    const list = buckets[day].sort((a,b) => completedMs(b) - completedMs(a));
+    return section(day, list, { day, prefix: 'Finished ' });
+  }).join('');
 }
 
 /* ========================= render ========================= */
@@ -426,12 +457,13 @@ function render(){
 function toggle(id, dayKey){
   tasks = tasks.map(t => {
     if (t.id !== id) return t;
+    const now = new Date().toISOString();
     if (t.type === 'periodic'){
       const dd = { ...(t.doneDates||{}) };
-      if (dd[dayKey]) delete dd[dayKey]; else dd[dayKey] = true;
+      if (dd[dayKey]) delete dd[dayKey]; else dd[dayKey] = now;
       return { ...t, doneDates: dd };
     }
-    return { ...t, done: !t.done };
+    return { ...t, done: !t.done, completedAt: t.done ? null : now };
   });
   persist(); render();
 }
