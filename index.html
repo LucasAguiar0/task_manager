@@ -92,6 +92,12 @@ main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
 .row .time{font-size:12px;color:var(--dim)}
 .tick{flex:0 0 auto;width:23px;height:23px;border-radius:50%;border:1.5px solid var(--line);
   display:flex;align-items:center;justify-content:center}
+.cross{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;border:1px solid var(--line);color:var(--faint)}
+.cross.on{border-color:rgba(255,107,107,.5);background:rgba(255,107,107,.14);color:var(--danger)}
+.cross:active{opacity:.6}
+.row.missed{opacity:.8}
+.row.missed .ttl{color:var(--dim)}
 .pill{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
   padding:2px 6px;border-radius:5px;white-space:nowrap}
 
@@ -169,6 +175,7 @@ const P = {
   flag:'<path d="M5 21V4M5 4h13l-3 4 3 4H5"/>',
   repeat:'<path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4"/>',
   reset:'<path d="M4 12a8 8 0 1 0 2.3-5.6L4 9M4 4v5h5"/>',
+  shame:'<circle cx="12" cy="12" r="8"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/>',
 };
 const ico = (n, s = 20, w = 1.9) =>
   `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -184,7 +191,7 @@ const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['January','February','March','April','May','June','July',
   'August','September','October','November','December'];
 const HORIZON = 60, PAST = 120, DONE_AHEAD = 400;
-const BUILD = 4;
+const BUILD = 5;
 
 /* ========================= dates ========================= */
 const pad = n => String(n).padStart(2,'0');
@@ -219,19 +226,22 @@ function occurrencesOn(dayKey){
   const out = [];
   for (const t of tasks){
     if (t.type === 'single'){
-      if (t.date === dayKey) out.push({ task:t, kind:'single', done:!!t.done, dayKey });
+      if (t.date === dayKey)
+        out.push({ task:t, kind:'single', done:!!t.done, missed:!t.done && !!t.missedAt, dayKey });
     } else if (t.type === 'deadline'){
       if (t.date === dayKey){
-        out.push({ task:t, kind:'due', done:!!t.done, dayKey });
+        out.push({ task:t, kind:'due', done:!!t.done, missed:!t.done && !!t.missedAt, dayKey });
       } else if (t.startDate && t.startDate <= dayKey && dayKey < t.date){
         const span = Math.max(1, dayDiff(t.startDate, t.date));
         const left = dayDiff(dayKey, t.date);
-        out.push({ task:t, kind:'lead', daysLeft:left, done:!!t.done, dayKey,
+        out.push({ task:t, kind:'lead', daysLeft:left, done:!!t.done,
+                   missed:!t.done && !!t.missedAt, dayKey,
                    heat: Math.min(1, Math.max(.2, 1 - left/span)) });
       }
     } else if (t.type === 'periodic'){
       if (dayKey >= t.startDate && dayDiff(t.startDate, dayKey) % t.intervalDays === 0)
-        out.push({ task:t, kind:'periodic', done:!!(t.doneDates||{})[dayKey], dayKey });
+        out.push({ task:t, kind:'periodic', done:!!(t.doneDates||{})[dayKey],
+                   missed: !(t.doneDates||{})[dayKey] && !!(t.missedDates||{})[dayKey], dayKey });
     }
   }
   return out.sort((a,b) => {
@@ -318,9 +328,14 @@ const hiddenNames = () => Object.keys(CAT).filter(k => !filters[k])
 /* ========================= views ========================= */
 function taskRow(o, opts){
   const c = colorOf(o), b = badgeOf(o);
+  /* Only things already past can be written off, and a countdown day isn't the deadline itself. */
+  const canMiss = !o.done && o.kind !== 'lead' && (o.missed || o.dayKey < todayKey());
+  const cross = canMiss ? `<button class="cross${o.missed?' on':''}" data-miss="${o.task.id}"
+      data-day="${o.dayKey}" aria-label="${o.missed?'Take off the shame list':'Mark as never done'}"
+      title="${o.missed?'Take off the shame list':'Mark as never done'}">${ico('x',13,2.6)}</button>` : '';
   const scheduled = opts && opts.day && o.dayKey !== opts.day
     ? `<span class="time">${o.kind === 'due' ? 'was due' : 'for'} ${prettyDate(o.dayKey)}</span>` : '';
-  return `<div class="row${o.done?' done':''}" style="border-left-color:${c}"
+  return `<div class="row${o.done?' done':''}${o.missed?' missed':''}" style="border-left-color:${c}"
             data-open="${o.task.id}" data-day="${o.dayKey}">
     <button class="tick" data-toggle="${o.task.id}" data-day="${o.dayKey}"
       style="border-color:${o.done?c:'var(--line)'};background:${o.done?c:'transparent'}"
@@ -336,6 +351,7 @@ function taskRow(o, opts){
                 border:1px solid color-mix(in srgb,${c} 30%,transparent)">${b}</span>` : ''}
       </div>
     </div>
+    ${cross}
   </div>`;
 }
 const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
@@ -355,7 +371,8 @@ function monthView(){
     const d = new Date(y, m, 1 - offset + i), k = key(d);
     const occs = visibleOn(k);
     const bars = occs.slice(0,3).map(o =>
-      `<span class="bar" style="background:${colorOf(o)};opacity:${o.done?.3:(o.kind==='lead'?o.heat:1)}"></span>`).join('');
+      `<span class="bar" style="background:${o.missed?'var(--danger)':colorOf(o)};opacity:${
+        o.done?.3:o.missed?.5:(o.kind==='lead'?o.heat:1)}"></span>`).join('');
     cells += `<button class="cell${d.getMonth()===m?'':' out'}${k===selected?' sel':''}${k===t?' today':''}"
       data-day-pick="${k}"><span class="num">${d.getDate()}</span><span class="bars">${bars}</span></button>`;
   }
@@ -382,7 +399,7 @@ function listView(){
   let over = '', up = '', count = 0;
   for (let i = PAST; i >= 1; i--){
     const k = addDays(t,-i);
-    const o = visibleOn(k).filter(x => !x.done && x.kind !== 'lead');
+    const o = visibleOn(k).filter(x => !x.done && !x.missed && x.kind !== 'lead');
     if (o.length){ over += section(k,o); count++; }
   }
   for (let i = 0; i < HORIZON; i++){
@@ -396,6 +413,21 @@ function listView(){
         "Add a task, a deadline, or something that repeats. It'll show up here and on the calendar.");
   return (over ? `<div class="group-lbl">Overdue</div>${over}` : '') + up +
          (up ? `<p class="note">Showing the next ${HORIZON} days</p>` : '');
+}
+
+function shameView(){
+  const t = todayKey();
+  let html = '', n = 0;
+  for (let i = 1; i <= PAST; i++){
+    const k = addDays(t, -i);
+    const o = visibleOn(k).filter(x => x.missed && x.kind !== 'lead');
+    if (o.length){ html += section(k, o); n += o.length; }
+  }
+  if (!n) return empty('Nothing on the list',
+    "Anything overdue that you write off with the \u00d7 button ends up here. Tick it off later and it moves to Completed.")
+    + `<p class="note">build ${BUILD}</p>`;
+  return `<p class="note" style="padding-bottom:12px">${n} ${n===1?'task':'tasks'} never done</p>`
+    + html + `<p class="note">build ${BUILD}</p>`;
 }
 
 function doneView(){
@@ -427,7 +459,7 @@ function render(){
   const t = todayKey();
   const left = visibleOn(t).filter(o => !o.done).length;
   const tuckedToday = hiddenOn(t);
-  const titles = { calendar:'Calendar', list:'Tasks', done:'Completed' };
+  const titles = { calendar:'Calendar', list:'Tasks', shame:'List of shame', done:'Completed' };
 
   document.getElementById('hdr').innerHTML = `
     <div><div class="h-title">${titles[view]}</div>
@@ -449,12 +481,16 @@ function render(){
 
   const main = document.getElementById('body');
   const keepScroll = main.scrollTop;
-  main.innerHTML = view === 'calendar' ? monthView() : view === 'list' ? listView() : doneView();
+  main.innerHTML = view === 'calendar' ? monthView()
+                 : view === 'list'     ? listView()
+                 : view === 'shame'    ? shameView()
+                 : doneView();
   main.scrollTop = keepScroll;
 
   document.getElementById('fab').innerHTML = ico('plus',26,2.5);
   document.getElementById('nav').innerHTML = [
-    ['calendar','Calendar','calendar'], ['list','Tasks','list'], ['done','Done','archive']
+    ['calendar','Calendar','calendar'], ['list','Tasks','list'],
+    ['shame','Shame','shame'], ['done','Done','archive']
   ].map(([k,label,icon]) =>
     `<button class="${view===k?'on':''}" data-view="${k}">${ico(icon,19,view===k?2.3:1.8)}<span>${label}</span></button>`
   ).join('');
@@ -466,11 +502,28 @@ function toggle(id, dayKey){
     if (t.id !== id) return t;
     const now = new Date().toISOString();
     if (t.type === 'periodic'){
-      const dd = { ...(t.doneDates||{}) };
-      if (dd[dayKey]) delete dd[dayKey]; else dd[dayKey] = now;
-      return { ...t, doneDates: dd };
+      const dd = { ...(t.doneDates||{}) }, md = { ...(t.missedDates||{}) };
+      if (dd[dayKey]) delete dd[dayKey]; else { dd[dayKey] = now; delete md[dayKey]; }
+      return { ...t, doneDates: dd, missedDates: md };
     }
-    return { ...t, done: !t.done, completedAt: t.done ? null : now };
+    return { ...t, done: !t.done, completedAt: t.done ? null : now,
+             missedAt: t.done ? t.missedAt : null };
+  });
+  persist(); render();
+}
+
+/* Marking something as never-done. It leaves the overdue pile and goes on the shame list,
+   but stays on the calendar and can still be ticked off later. */
+function markMissed(id, dayKey){
+  tasks = tasks.map(t => {
+    if (t.id !== id) return t;
+    const now = new Date().toISOString();
+    if (t.type === 'periodic'){
+      const md = { ...(t.missedDates||{}) };
+      if (md[dayKey]) delete md[dayKey]; else md[dayKey] = now;
+      return { ...t, missedDates: md };
+    }
+    return { ...t, missedAt: t.missedAt ? null : now };
   });
   persist(); render();
 }
@@ -483,6 +536,7 @@ document.addEventListener('click', e => {
   else if ((n = el('data-day-pick'))){ selected = n.dataset.dayPick; render(); }
   else if ((n = el('data-today'))){ cursor = new Date(); selected = todayKey(); render(); }
   else if ((n = el('data-toggle'))){ toggle(n.dataset.toggle, n.dataset.day); }
+  else if ((n = el('data-miss'))){ markMissed(n.dataset.miss, n.dataset.day); }
   else if ((n = el('data-open'))){ openEditor(tasks.find(t => t.id === n.dataset.open)); }
   else if ((n = el('data-filter'))){
     const k = n.dataset.filter;
